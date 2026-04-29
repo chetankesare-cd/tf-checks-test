@@ -1,0 +1,20 @@
+name: PR Checks
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+
+jobs:
+  tf-checks-complete:
+    if: github.actor != 'dependabot[bot]'
+    uses: ./.github/workflows/tf-checks.yml
+    with:
+      working_directory: './examples/complete/'
+      provider: aws
+      enable_plan: false        # set false first — we test fmt/validate first
+    secrets:
+      BUILD_ROLE: ${{ secrets.BUILD_ROLE }}
