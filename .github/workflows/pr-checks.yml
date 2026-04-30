@@ -15,6 +15,6 @@ jobs:
     with:
       working_directory: './examples/complete/'
       provider: aws
-      enable_plan: false        # set false first — we test fmt/validate first
+      enable_plan: true        # set false first — we test fmt/validate first
     secrets:
       BUILD_ROLE: ${{ secrets.BUILD_ROLE }}
