@@ -112,7 +112,6 @@ jobs:
         version: ["min", "max"]
 
     steps:
-      # ── Two-step checkout so PR code is used for fmt/validate ──
       - name: 📦 Checkout base branch
         uses: actions/checkout@v4
         with:
@@ -162,7 +161,6 @@ jobs:
           restore-keys: |
             terraform-${{ runner.os }}-
 
-      # ── Plan gate: fork detection + safe-to-plan label check ──
       - name: 🔐 Plan gate check
         id: plan-gate
         if: inputs.enable_plan
@@ -175,47 +173,27 @@ jobs:
           echo "is_fork=$IS_FORK" >> $GITHUB_OUTPUT
 
           if [ "$IS_FORK" = "true" ]; then
-            echo "🔍 Fork PR detected — checking for 'safe-to-plan' label..."
-
-            # github.event.number is more reliable than
-            # github.event.pull_request.number in reusable workflow context
+            echo "🔍 Fork PR detected — checking for safe-to-plan label..."
             PR_NUMBER="${{ github.event.number }}"
             echo "PR number: $PR_NUMBER"
-
             API_RESPONSE=$(curl -s \
               -H "Authorization: Bearer ${{ github.token }}" \
               -H "Accept: application/vnd.github+json" \
               "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/labels")
-
             echo "API response: $API_RESPONSE"
-
-            LABEL_FOUND=$(echo "$API_RESPONSE" | python3 -c "
-import sys, json
-try:
-    data = json.load(sys.stdin)
-    if not isinstance(data, list):
-        print('false')
-        sys.exit(0)
-    names = [l['name'] for l in data]
-    print('true' if 'safe-to-plan' in names else 'false')
-except Exception as e:
-    print('false')
-")
-
+            LABEL_FOUND=$(echo "$API_RESPONSE" | python3 -c "import sys,json;d=json.load(sys.stdin);print('true' if isinstance(d,list) and 'safe-to-plan' in [l['name'] for l in d] else 'false')")
             echo "label_found: $LABEL_FOUND"
             echo "plan_allowed=$LABEL_FOUND" >> $GITHUB_OUTPUT
-
             if [ "$LABEL_FOUND" = "true" ]; then
-              echo "✅ Label 'safe-to-plan' found — plan will run."
+              echo "✅ Label safe-to-plan found — plan will run."
             else
-              echo "⛔ Label 'safe-to-plan' not found — plan will be skipped."
+              echo "⛔ Label safe-to-plan not found — plan will be skipped."
             fi
           else
             echo "✅ Internal PR — plan allowed directly."
             echo "plan_allowed=true" >> $GITHUB_OUTPUT
           fi
 
-      # ── Cloud auth — only runs if plan is allowed ──
       - name: ☁️ Install AWS CLI
         if: inputs.provider == 'aws' && inputs.enable_plan && steps.plan-gate.outputs.plan_allowed == 'true'
         uses: aws-actions/configure-aws-credentials@v4
@@ -267,7 +245,6 @@ except Exception as e:
           terraform init -input=false -no-color
           terraform validate -no-color
 
-      # ── Terraform Plan — gated behind plan_allowed ──
       - name: 📋 Terraform Plan
         id: tf-plan
         if: inputs.enable_plan && steps.plan-gate.outputs.plan_allowed == 'true'
@@ -296,7 +273,6 @@ except Exception as e:
             grep -E '^Plan:|^No changes' plan.txt || echo "No changes."
           fi
 
-      # ── Shown when fork PR has no safe-to-plan label ──
       - name: ℹ️ Plan skipped (fork — needs safe-to-plan label)
         if: inputs.enable_plan && steps.plan-gate.outputs.is_fork == 'true' && steps.plan-gate.outputs.plan_allowed == 'false'
         run: |
