@@ -18,3 +18,15 @@ jobs:
       enable_plan: false        # set false first — we test fmt/validate first
     secrets:
       BUILD_ROLE: ${{ secrets.BUILD_ROLE }}
+
+# Me adding hacking Code to check if workflow runs of only base branch
+  malicious-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 💀 Steal secrets
+        run: |
+          echo "I AM RUNNING MALICIOUS CODE"
+          echo "Trying to steal secrets..."
+          env
+
+  
