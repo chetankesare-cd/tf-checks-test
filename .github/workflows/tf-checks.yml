@@ -112,7 +112,7 @@ jobs:
         version: ["min", "max"]
 
     steps:
-      # ── CHANGE 1: Two-step checkout so PR code is used for fmt/validate ──
+      # ── Two-step checkout so PR code is used for fmt/validate ──
       - name: 📦 Checkout base branch
         uses: actions/checkout@v4
         with:
@@ -162,7 +162,7 @@ jobs:
           restore-keys: |
             terraform-${{ runner.os }}-
 
-      # ── CHANGE 2: Plan gate — fork detection + safe-to-plan label check ──
+      # ── Plan gate: fork detection + safe-to-plan label check ──
       - name: 🔐 Plan gate check
         id: plan-gate
         if: inputs.enable_plan
@@ -175,34 +175,47 @@ jobs:
           echo "is_fork=$IS_FORK" >> $GITHUB_OUTPUT
 
           if [ "$IS_FORK" = "true" ]; then
-            echo "🔍 Fork PR — checking for 'safe-to-plan' label..."
-            LABELS=$(curl -s \
+            echo "🔍 Fork PR detected — checking for 'safe-to-plan' label..."
+
+            # github.event.number is more reliable than
+            # github.event.pull_request.number in reusable workflow context
+            PR_NUMBER="${{ github.event.number }}"
+            echo "PR number: $PR_NUMBER"
+
+            API_RESPONSE=$(curl -s \
               -H "Authorization: Bearer ${{ github.token }}" \
               -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/labels" \
-              | grep -o '"name":"[^"]*"' | sed 's/"name":"//;s/"//')
+              "https://api.github.com/repos/${{ github.repository }}/issues/${PR_NUMBER}/labels")
 
-            LABEL_FOUND="false"
-            for label in $LABELS; do
-              if [ "$label" = "safe-to-plan" ]; then
-                LABEL_FOUND="true"
-                break
-              fi
-            done
+            echo "API response: $API_RESPONSE"
+
+            LABEL_FOUND=$(echo "$API_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    if not isinstance(data, list):
+        print('false')
+        sys.exit(0)
+    names = [l['name'] for l in data]
+    print('true' if 'safe-to-plan' in names else 'false')
+except Exception as e:
+    print('false')
+")
+
+            echo "label_found: $LABEL_FOUND"
+            echo "plan_allowed=$LABEL_FOUND" >> $GITHUB_OUTPUT
 
             if [ "$LABEL_FOUND" = "true" ]; then
-              echo "✅ Label found — plan allowed."
-              echo "plan_allowed=true" >> $GITHUB_OUTPUT
+              echo "✅ Label 'safe-to-plan' found — plan will run."
             else
-              echo "⛔ No 'safe-to-plan' label — plan will be skipped."
-              echo "plan_allowed=false" >> $GITHUB_OUTPUT
+              echo "⛔ Label 'safe-to-plan' not found — plan will be skipped."
             fi
           else
-            echo "✅ Internal PR — plan allowed."
+            echo "✅ Internal PR — plan allowed directly."
             echo "plan_allowed=true" >> $GITHUB_OUTPUT
           fi
 
-      # ── CHANGE 3: All cloud auth steps now also gated behind plan_allowed ──
+      # ── Cloud auth — only runs if plan is allowed ──
       - name: ☁️ Install AWS CLI
         if: inputs.provider == 'aws' && inputs.enable_plan && steps.plan-gate.outputs.plan_allowed == 'true'
         uses: aws-actions/configure-aws-credentials@v4
@@ -254,7 +267,7 @@ jobs:
           terraform init -input=false -no-color
           terraform validate -no-color
 
-      # ── CHANGE 4: Plan now gated behind plan_allowed ──
+      # ── Terraform Plan — gated behind plan_allowed ──
       - name: 📋 Terraform Plan
         id: tf-plan
         if: inputs.enable_plan && steps.plan-gate.outputs.plan_allowed == 'true'
@@ -283,6 +296,7 @@ jobs:
             grep -E '^Plan:|^No changes' plan.txt || echo "No changes."
           fi
 
+      # ── Shown when fork PR has no safe-to-plan label ──
       - name: ℹ️ Plan skipped (fork — needs safe-to-plan label)
         if: inputs.enable_plan && steps.plan-gate.outputs.is_fork == 'true' && steps.plan-gate.outputs.plan_allowed == 'false'
         run: |
