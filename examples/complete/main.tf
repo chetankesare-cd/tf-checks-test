@@ -1,8 +1,19 @@
-# test resource — no real cloud needed
-output "hello" {
-  value = "world"
+terraform {
+  required_version = ">= 1.0.0, < 2.0.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0.0"
+    }
+  }
 }
 
-output "traditional PR check" {
-  value = "Hello world"
+provider "aws" {
+  region = "us-east-1"
+}
+
+data "aws_caller_identity" "current" {}
+
+output "account_id" {
+  value = data.aws_caller_identity.current.account_id
 }
