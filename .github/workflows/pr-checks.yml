@@ -15,6 +15,9 @@ jobs:
     with:
       working_directory: './examples/complete/'
       provider: aws
-      enable_plan: true        # set false first — we test fmt/validate first
+      enable_plan: true
+      plan_label: 'safe-to-plan'
     secrets:
-      BUILD_ROLE: ${{ secrets.BUILD_ROLE }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
